@@ -48,7 +48,8 @@ class ShareInertiaData
                 return array_merge($request->user()->toArray(), array_filter([
                     'all_teams' => Jetstream::hasTeamFeatures() ? $request->user()->allTeams() : null,
                 ]), [
-                    'two_factor_enabled' => ! is_null($request->user()->two_factor_secret),
+                    'two_factor_enabled' => $request->user()->is_two_factor_enabled,
+                    'two_factor_setup' => ! is_null($request->user()->two_factor_secret),
                 ]);
             },
             'errorBags' => function () {

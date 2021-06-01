@@ -23,37 +23,44 @@
                 </p>
             </div>
 
-            <div v-if="twoFactorEnabled">
-                <div v-if="qrCode">
-                    <div class="mt-4 max-w-xl text-sm text-gray-600">
-                        <p class="font-semibold">
-                            Two factor authentication is now enabled. Scan the following QR code using your phone's authenticator application.
-                        </p>
-                    </div>
-
-                    <div class="mt-4" v-html="qrCode">
-                    </div>
+            <div v-if="recoveryCodes.length > 0">
+                <div class="mt-4 max-w-xl text-sm text-gray-600">
+                    <p class="font-semibold">
+                        Store these recovery codes in a secure password manager. They can be used to recover access to your account if your two factor authentication device is lost.
+                    </p>
                 </div>
 
-                <div v-if="recoveryCodes.length > 0">
-                    <div class="mt-4 max-w-xl text-sm text-gray-600">
-                        <p class="font-semibold">
-                            Store these recovery codes in a secure password manager. They can be used to recover access to your account if your two factor authentication device is lost.
-                        </p>
+                <div class="grid gap-1 max-w-xl mt-4 px-4 py-4 font-mono text-sm bg-gray-100 rounded-lg">
+                    <div v-for="code in recoveryCodes" :key="code">
+                        {{ code }}
                     </div>
+                </div>
+            </div>
 
-                    <div class="grid gap-1 max-w-xl mt-4 px-4 py-4 font-mono text-sm bg-gray-100 rounded-lg">
-                        <div v-for="code in recoveryCodes" :key="code">
-                            {{ code }}
-                        </div>
+            <div v-if="twoFactorSetup || displayQrCord">
+                <div class="mt-4 max-w-xl text-sm text-gray-600">
+                    <p class="font-semibold">
+                        Scan the following QR code using your phone\'s authenticator application to setup two factor authentication.
+                    </p>
+                </div>
+
+                <div class="mt-4" v-html="qrCode">
+                </div>
+            </div>
+
+            <div v-if="twoFactorSetup">
+                <div class="mt-4 max-w-xl text-sm text-gray-600">
+                    <div class="col-span-6 sm:col-span-4">
+                        <jet-label for="confirmationCode" value="After configuring the authenticator application, enter the code to validate the two-factor authentication." />
+                        <jet-input id="confirmationCode" type="text" class="mt-1 block w-full" v-model="confirmationCode" />
                     </div>
                 </div>
             </div>
 
             <div class="mt-5">
-                <div v-if="! twoFactorEnabled">
-                    <jet-confirms-password @confirmed="enableTwoFactorAuthentication">
-                        <jet-button type="button" :class="{ 'opacity-25': enabling }" :disabled="enabling">
+                <div v-if="! twoFactorEnabled && ! twoFactorSetup">
+                    <jet-confirms-password @confirmed="setupTwoFactorAuthentication">
+                        <jet-button type="button" :class="{ 'opacity-25': setuping }" :disabled="setuping">
                             Enable
                         </jet-button>
                     </jet-confirms-password>
@@ -73,13 +80,22 @@
                         </jet-secondary-button>
                     </jet-confirms-password>
 
-                    <jet-confirms-password @confirmed="disableTwoFactorAuthentication">
-                        <jet-danger-button
-                                        :class="{ 'opacity-25': disabling }"
-                                        :disabled="disabling">
-                            Disable
-                        </jet-danger-button>
-                    </jet-confirms-password>
+                    <div v-if="twoFactorEnabled">
+                        <jet-button
+                                        :class="{ 'opacity-25': enabling }"
+                                        :disabled="enabling"
+                                        @click="enableTwoFactorAuthentication">
+                            Confirm
+                        </jet-button>
+                    <div v-else>
+                        <jet-confirms-password @confirmed="disableTwoFactorAuthentication">
+                            <jet-danger-button
+                                            :class="{ 'opacity-25': disabling }"
+                                            :disabled="disabling">
+                                Disable
+                            </jet-danger-button>
+                        </jet-confirms-password>
+                    <div>
                 </div>
             </div>
         </template>
@@ -105,16 +121,18 @@
         data() {
             return {
                 enabling: false,
+                setuping: false,
                 disabling: false,
 
                 qrCode: null,
                 recoveryCodes: [],
+                confirmationCode: null,
             }
         },
 
         methods: {
-            enableTwoFactorAuthentication() {
-                this.enabling = true
+            setupTwoFactorAuthentication() {
+                this.setuping = true
 
                 this.$inertia.post('/user/two-factor-authentication', {}, {
                     preserveScroll: true,
@@ -122,6 +140,19 @@
                         this.showQrCode(),
                         this.showRecoveryCodes(),
                     ]),
+                    onFinish: () => (this.setuping = false),
+                })
+            },
+            enableTwoFactorAuthentication() {
+                this.setuping = false
+                this.enabling = true
+
+                this.$inertia.post('/user/two-factor-authentication/confirm', {code: this.confirmationCode}, {
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        this.qrCode = null;
+                        this.recoveryCodes = [];
+                    },
                     onFinish: () => (this.enabling = false),
                 })
             },
@@ -160,6 +191,9 @@
         computed: {
             twoFactorEnabled() {
                 return ! this.enabling && this.$page.props.user.two_factor_enabled
+            },
+            twoFactorSetup() {
+                return this.setuping || this.$page.props.user.two_factor_setup
             }
         }
     }

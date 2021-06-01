@@ -3,8 +3,9 @@
 namespace Laravel\Jetstream\Http\Livewire;
 
 use Illuminate\Support\Facades\Auth;
+use Laravel\Fortify\Actions\ConfirmEnableTwoFactorAuthentication;
 use Laravel\Fortify\Actions\DisableTwoFactorAuthentication;
-use Laravel\Fortify\Actions\EnableTwoFactorAuthentication;
+use Laravel\Fortify\Actions\GenerateTwoFactorAuthenticationSecret;
 use Laravel\Fortify\Actions\GenerateNewRecoveryCodes;
 use Laravel\Fortify\Features;
 use Laravel\Jetstream\ConfirmsPasswords;
@@ -29,21 +30,45 @@ class TwoFactorAuthenticationForm extends Component
     public $showingRecoveryCodes = false;
 
     /**
-     * Enable two factor authentication for the user.
+     * Code to confirm activation of two-factor authentication
+     * @var string
+     */
+    public $confirmationCode = null;
+
+    /**
+     * Generate two factor authentication secret for user.
      *
-     * @param  \Laravel\Fortify\Actions\EnableTwoFactorAuthentication  $enable
+     * @param  \Laravel\Fortify\Actions\GenerateTwoFactorAuthenticationSecret  $generate
      * @return void
      */
-    public function enableTwoFactorAuthentication(EnableTwoFactorAuthentication $enable)
+    public function generateTwoFactorAuthenticationSecret(GenerateTwoFactorAuthenticationSecret $generate)
     {
         if (Features::optionEnabled(Features::twoFactorAuthentication(), 'confirmPassword')) {
             $this->ensurePasswordIsConfirmed();
         }
 
-        $enable(Auth::user());
+        $generate(Auth::user());
 
         $this->showingQrCode = true;
         $this->showingRecoveryCodes = true;
+    }
+
+    /**
+     * Enable two factor authentication for the user.
+     *
+     * @param  \Laravel\Fortify\Actions\ConfirmEnableTwoFactorAuthentication  $enable
+     * @return void
+     */
+    public function confirmEnableTwoFactorAuthentication(ConfirmEnableTwoFactorAuthentication $enable)
+    {
+        $enabled = $enable(Auth::user(), $this->confirmationCode);
+
+        if (!$enabled) {
+            $this->addError('confirmationCode', __('The provided two factor authentication code was invalid.'));
+            return;
+        }
+
+        $this->hideSetup();
     }
 
     /**
@@ -89,7 +114,15 @@ class TwoFactorAuthenticationForm extends Component
             $this->ensurePasswordIsConfirmed();
         }
 
+        $this->hideSetup();
         $disable(Auth::user());
+    }
+
+    protected function hideSetup()
+    {
+        $this->showingQrCode = false;
+        $this->showingRecoveryCodes = false;
+        $this->confirmationCode = null;
     }
 
     /**
@@ -103,13 +136,23 @@ class TwoFactorAuthenticationForm extends Component
     }
 
     /**
+     * Determine if two-factor authentication is pending configuration.
+     *
+     * @return bool
+     */
+    public function getSetupProperty()
+    {
+        return ! empty($this->user->two_factor_secret) && !$this->user->is_two_factor_enabled;
+    }
+
+    /**
      * Determine if two factor authentication is enabled.
      *
      * @return bool
      */
     public function getEnabledProperty()
     {
-        return ! empty($this->user->two_factor_secret);
+        return ! empty($this->user->two_factor_secret) && $this->user->is_two_factor_enabled;
     }
 
     /**
